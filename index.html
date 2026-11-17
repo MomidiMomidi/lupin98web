@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ルパン９８ ver1.0a Web移植版</title>
+  <!-- オンライン環境向けの追加日本語フォント（オフライン時はローカルフォントへ自動フォールバック） -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Noto+Sans+JP:wght@400;700&family=Noto+Serif+JP:wght@400;700&family=Shippori+Mincho:wght@500;700;800&family=Zen+Maru+Gothic:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="title-block">
+        <h1>ルパン９８ <span class="badge">Web移植版</span></h1>
+        <p class="subtitle">PC-9801用ジョークソフト（こうの　たけし氏作・1993）のブラウザ移植版 — TV風タイトル表示・ルビ・位置合わせ対応</p>
+      </div>
+      <div class="header-meta">
+        <span id="statusText" class="status-pill">待機中</span>
+      </div>
+    </header>
+
+    <main class="stage-section">
+      <div class="crt-frame" id="crtFrame">
+        <canvas id="lupinCanvas" width="1920" height="1200" aria-label="ルパン98タイトル表示画面"></canvas>
+        <div class="scanline-overlay" aria-hidden="true"></div>
+      </div>
+
+      <div class="action-bar">
+        <button type="button" id="playBtn" class="btn btn-primary">
+          <span class="btn-icon">▶</span> 演出再生（音声つき）
+        </button>
+        <button type="button" id="randomPlayBtn" class="btn btn-accent">
+          <span class="btn-icon">🎲</span> ランダム選曲で再生
+        </button>
+        <button type="button" id="skipBtn" class="btn btn-secondary" disabled>
+          <span class="btn-icon">⏭</span> 全体表示へスキップ
+        </button>
+        <button type="button" id="previewBtn" class="btn btn-secondary">
+          <span class="btn-icon">👁</span> プレビュー表示
+        </button>
+        <button type="button" id="clearPreviewBtn" class="btn btn-secondary" title="表示されているプレビューや画面表示を消去します">
+          <span class="btn-icon">✖</span> プレビュー消去
+        </button>
+        <button type="button" id="savePngBtn" class="btn btn-secondary">
+          <span class="btn-icon">💾</span> PNG保存
+        </button>
+      </div>
+    </main>
+
+    <section class="controls-grid">
+      <!-- 左パネル：テキスト入力・位置合わせ・ルビ・エピソード選択 -->
+      <div class="panel">
+        <h2 class="panel-title">タイトル入力・位置合わせ・ルビ設定</h2>
+
+        <div class="field-group">
+          <label for="episodeSelect">収録サブタイトル（lupin-titles.js）から読込</label>
+          <div class="row-inline">
+            <select id="episodeSelect" class="control-select"></select>
+            <button type="button" id="randomPickBtn" class="btn btn-small" title="ランダムに1話選んで入力欄に読み込みます">ランダム読込</button>
+          </div>
+        </div>
+
+        <div class="preset-chips" aria-label="サンプル入力">
+          <span class="chip-label">サンプル：</span>
+          <button type="button" class="chip-btn" data-sample="ep1-ruby">第1話（ルビ入り例）</button>
+          <button type="button" class="chip-btn" data-sample="multiline">3行・ルビ位置合わせ例</button>
+          <button type="button" class="chip-btn" data-sample="single">1行中央表示</button>
+        </div>
+
+        <div class="field-group">
+          <div class="editor-toolbar">
+            <label for="titleInput">表示テキスト入力欄</label>
+            <div class="toolbar-actions">
+              <button type="button" id="insertRubyBtn" class="btn btn-mini" title="選択テキストにルビ記法を挿入します">｜ルビ《》挿入</button>
+              <button type="button" id="insertBoxBtn" class="btn btn-mini" title="選択テキストを四角枠記法【】で囲みます">【枠】挿入</button>
+              <button type="button" id="insertHalfSpaceBtn" class="btn btn-mini" title="カーソル位置に半角スペースを挿入">半角空白</button>
+              <button type="button" id="insertFullSpaceBtn" class="btn btn-mini" title="カーソル位置に全角スペースを挿入">全角空白</button>
+              <button type="button" id="clearInputBtn" class="btn btn-mini btn-danger-ghost" title="入力欄をクリア">消去</button>
+            </div>
+          </div>
+
+          <div class="editor-wrap">
+            <div class="ruler" aria-hidden="true">
+              <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>
+              <span class="ruler-note">← 全角10文字（半角20文字）幅ガイド</span>
+            </div>
+            <div class="textarea-container">
+              <div class="guide-line-10" aria-hidden="true"></div>
+              <textarea id="titleInput" rows="4" spellcheck="false" placeholder="ここに入力（改行で行分け、半角/全角スペースで横位置調整）"></textarea>
+            </div>
+          </div>
+
+          <div class="url-share-box">
+            <button type="button" id="generateUrlBtn" class="btn btn-small" title="入力欄の文字列から自動再生用URLを生成します">🔗 URL生成</button>
+            <input type="text" id="generatedUrlInput" class="control-input url-output" readonly placeholder="「URL生成」を押すと再生用URLが表示されます" aria-label="生成された再生用URL">
+            <button type="button" id="copyUrlBtn" class="btn btn-small" disabled title="生成したURLをクリップボードにコピーします">コピー</button>
+          </div>
+
+          <div class="help-box">
+            <p><strong>位置合わせ：</strong><code>改行</code>で行分け（空行も可）、<code>半角スペース</code>（0.5文字幅）・<code>全角スペース</code>（1文字幅）で横位置を調整できます。<strong>空白と四角枠文字は1文字ずつの拡大タイプ演出時にはスキップ（非表示）</strong>になります。</p>
+            <p><strong>ルビ・四角枠記法：</strong>ルビは <code>｜親文字《るび》</code>（<code>|</code>可）・<code>漢字《るび》</code>・<code>{親文字|るび}</code>（1文字ずつ <code>三《さん》世《せい》</code> も可）。四角枠は <code>【前編】</code> または <code>[[前編]]</code> で囲みます（リストでは末尾に <code>（前編）</code> として表示されます）。</p>
+            <p><strong>URL引数での自動再生：</strong><code>?text=文字列</code>（任意文字列）、<code>?ep=1～155</code>（話数番号で指定）、<code>?ep=random</code>（<code>rand</code> / <code>rnd</code> / <code>0</code> でランダム再生）を付けて開くと自動再生します。</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右パネル：フォント・演出・音声設定 -->
+      <div class="panel">
+        <h2 class="panel-title">フォント・表示・音声設定</h2>
+
+        <div class="field-group">
+          <label for="fontSelect">フォント選択</label>
+          <div class="row-inline">
+            <select id="fontSelect" class="control-select">
+              <option value="shippori" selected>しっぽり明朝（タイトル風明朝）</option>
+              <option value="yu-mincho">游明朝 / ヒラギノ明朝</option>
+              <option value="ms-mincho">MS 明朝（標準明朝）</option>
+              <option value="ms-gothic">MS ゴシック（等幅ゴシック）</option>
+              <option value="yu-gothic">游ゴシック / ヒラギノ角ゴ</option>
+              <option value="meiryo">メイリオ</option>
+              <option value="biz-gothic">BIZ UDゴシック</option>
+              <option value="maru-gothic">丸ゴシック（HG丸ゴ / Zen丸ゴ）</option>
+              <option value="kyokasho">UDデジタル教科書体 / 楷書</option>
+              <option value="ultra-gothic">極太ゴシック（Dela Gothic / 創英角UB）</option>
+              <option value="custom">カスタムフォント（下の欄で指定）</option>
+            </select>
+            <label class="checkbox-inline" title="フォントを太字で描画します">
+              <input type="checkbox" id="boldCheck" checked>
+              <span>太字</span>
+            </label>
+          </div>
+          <div id="customFontRow" class="custom-font-row hidden">
+            <input type="text" id="customFontInput" class="control-input" placeholder="例: 源ノ明朝, HGP明朝E, Georgia" value="Noto Serif JP">
+          </div>
+        </div>
+
+        <div class="two-col-fields">
+          <div class="field-group">
+            <label for="rubySizeSelect">ルビの文字サイズ</label>
+            <select id="rubySizeSelect" class="control-select">
+              <option value="small">小さめ</option>
+              <option value="normal" selected>標準</option>
+              <option value="large">大きめ</option>
+            </select>
+          </div>
+
+          <div class="field-group">
+            <label for="speedSelect">タイプ演出速度</label>
+            <select id="speedSelect" class="control-select">
+              <option value="1" selected>実機準拠 (1.0x)</option>
+              <option value="1.5">速め (1.5x)</option>
+              <option value="0.75">ゆっくり (0.75x)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="two-col-fields">
+          <div class="field-group">
+            <label for="fgColorInput">文字色</label>
+            <div class="color-row">
+              <input type="color" id="fgColorInput" value="#ffffff">
+              <button type="button" class="btn btn-mini color-preset" data-fg="#ffffff" data-bg="#000000">白/黒(標準)</button>
+              <button type="button" class="btn btn-mini color-preset" data-fg="#ffe259" data-bg="#000000">金/黒</button>
+              <button type="button" class="btn btn-mini color-preset" data-fg="#ffffff" data-bg="#8b0000">白/深紅</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label for="bgColorInput">背景色</label>
+            <div class="color-row">
+              <input type="color" id="bgColorInput" value="#000000">
+              <span id="colorHexLabel" class="muted-code">#FFFFFF / #000000</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="checkbox-stack">
+          <label class="checkbox-item">
+            <input type="checkbox" id="rubyDuringTypeCheck">
+            <span>1文字ずつ拡大表示（タイプ中）にも上部にルビを併記する</span>
+          </label>
+          <label class="checkbox-item">
+            <input type="checkbox" id="scanlineCheck">
+            <span>ブラウン管風の走査線（スキャンライン）を表示する</span>
+          </label>
+        </div>
+
+        <div class="audio-box">
+          <div class="audio-header">
+            <span class="field-label">音声設定（15,360 Hz 8bit PCM）</span>
+            <label class="checkbox-inline">
+              <input type="checkbox" id="muteCheck">
+              <span>ミュート</span>
+            </label>
+          </div>
+          <div class="audio-controls">
+            <label for="volumeRange" class="sr-only">音量</label>
+            <input type="range" id="volumeRange" min="0" max="100" value="80">
+            <span id="volumeLabel" class="volume-val">80%</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="app-footer">
+      <p>オリジナルプログラム：ルパン９８ ver1.0a (c) こうの　たけし (1993) / オリジナルデータ（LUPIN.TIT, LUPIN1.SPK, LUPIN2.SPK）より移植</p>
+    </footer>
+  </div>
+
+  <script src="lupin-titles.js"></script>
+  <script src="lupin-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
