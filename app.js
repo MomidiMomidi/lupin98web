@@ -1059,12 +1059,15 @@
     episodesList = rawList.map((entry, idx) => {
       let text = "";
       let epNumber = idx + 1;
+      // 将来の1期・3期等の追加に備え、期番号を保持する（現在のデータ配列はアニメ2期）
+      let epSeason = 2;
 
       if (Array.isArray(entry)) {
         text = entry.map((ln) => String(ln)).join("\n");
       } else if (typeof entry === "string") {
         text = entry;
       } else if (entry && typeof entry === "object") {
+        if (typeof entry.season === "number") epSeason = entry.season;
         if (typeof entry.number === "number") epNumber = entry.number;
         if (typeof entry.text === "string") {
           text = entry.text;
@@ -1113,6 +1116,7 @@
       const summaryText = `${mainTitle}${boxSuffix}`.trim();
 
       return {
+        season: epSeason,
         number: epNumber,
         text,
         summary: summaryText || "(空白)"
@@ -1131,17 +1135,27 @@
     els.episodeSelect.appendChild(frag);
   }
 
-  function loadEpisodeToInput(epNumber) {
-    const ep = episodesList.find((item) => item.number === epNumber);
+  function findEpisode(epNumber, season = null) {
+    if (epNumber === null || !Number.isSafeInteger(epNumber) || epNumber < 1) {
+      return null;
+    }
+    return episodesList.find((item) => item.number === epNumber && (season === null || item.season === season)) ?? null;
+  }
+
+  function loadEpisodeEntry(ep) {
     if (!ep) return;
     els.episodeSelect.value = String(ep.number);
     els.titleInput.value = ep.text;
   }
 
-  function pickRandomEpisodeNumber() {
-    if (episodesList.length === 0) return null;
-    const idx = Math.floor(Math.random() * episodesList.length);
-    return episodesList[idx].number;
+  function loadEpisodeToInput(epNumber, season = null) {
+    loadEpisodeEntry(findEpisode(epNumber, season));
+  }
+
+  function pickRandomEpisode(candidates = episodesList) {
+    if (!Array.isArray(candidates) || candidates.length === 0) return null;
+    const idx = Math.floor(Math.random() * candidates.length);
+    return candidates[idx];
   }
 
   function insertTextAtCursor(text, selectStartOffset = null, selectEndOffset = null) {
@@ -1274,8 +1288,8 @@
     });
 
     els.randomPlayBtn.addEventListener("click", () => {
-      const num = pickRandomEpisodeNumber();
-      if (num !== null) loadEpisodeToInput(num);
+      const ep = pickRandomEpisode();
+      if (ep) loadEpisodeEntry(ep);
       clearGeneratedUrl();
       startPlayback();
     });
@@ -1315,8 +1329,8 @@
     });
 
     els.randomPickBtn.addEventListener("click", () => {
-      const num = pickRandomEpisodeNumber();
-      if (num !== null) loadEpisodeToInput(num);
+      const ep = pickRandomEpisode();
+      if (ep) loadEpisodeEntry(ep);
       clearGeneratedUrl();
       clearPreview("収録タイトルを入力欄に読み込みました");
     });
@@ -1420,25 +1434,30 @@
 
   const RANDOM_PARAM_KEYWORDS = new Set(["random", "rand", "rnd"]);
 
-  function findEpisodeByNumber(epNumber) {
-    if (epNumber === null || !Number.isSafeInteger(epNumber) || epNumber < 1) {
-      return null;
-    }
-    return episodesList.find((item) => item.number === epNumber) ?? null;
-  }
-
-  // URL引数 ep の値（random/rand/rnd/0 でランダム、1以上で該当話数、存在しない場合は null）を解決する
+  // URL引数 ep（形式: "<期>-<話数|random|rand|rnd|0>"、例: "2-50", "2-random", "2-0"）を解決する
   function resolveEpisodeFromUrlParam(rawValue) {
     if (rawValue === null) return null;
     const normalized = rawValue.trim().toLowerCase();
-    if (!normalized) return null;
+    const match = normalized.match(/^(\d+)-([a-z0-9]+)$/);
+    if (!match) return null;
 
-    const isUnsignedInt = /^\d+$/.test(normalized);
-    if (RANDOM_PARAM_KEYWORDS.has(normalized) || (isUnsignedInt && Number(normalized) === 0)) {
-      return findEpisodeByNumber(pickRandomEpisodeNumber());
+    const season = Number(match[1]);
+    const target = match[2];
+    if (!Number.isSafeInteger(season) || season < 1) {
+      return null;
     }
 
-    return isUnsignedInt ? findEpisodeByNumber(Number(normalized)) : null;
+    const seasonEpisodes = episodesList.filter((item) => item.season === season);
+    if (seasonEpisodes.length === 0) {
+      return null;
+    }
+
+    const isUnsignedInt = /^\d+$/.test(target);
+    if (RANDOM_PARAM_KEYWORDS.has(target) || (isUnsignedInt && Number(target) === 0)) {
+      return pickRandomEpisode(seasonEpisodes);
+    }
+
+    return isUnsignedInt ? findEpisode(Number(target), season) : null;
   }
 
   async function init() {
@@ -1453,7 +1472,7 @@
 
     let shouldAutoPlay = false;
     if (resolvedEp) {
-      loadEpisodeToInput(resolvedEp.number);
+      loadEpisodeEntry(resolvedEp);
       shouldAutoPlay = true;
     } else if (urlEpRaw === null && urlText !== null) {
       els.titleInput.value = urlText;
@@ -1475,7 +1494,7 @@
     }
 
     if (episodesList.length > 0) {
-      loadEpisodeToInput(episodesList[0].number);
+      loadEpisodeEntry(episodesList[0]);
     }
     clearPreview("待機中");
   }
